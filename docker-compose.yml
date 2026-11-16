@@ -1,0 +1,20 @@
+services:
+  promo-bot:
+    build: .
+    container_name: promo-bot
+    restart: unless-stopped
+    tty: true
+    environment:
+      - TZ=America/Sao_Paulo
+    volumes:
+      - ./config.json:/app/config.json
+      - ./data:/app/data
+
+  # Modo teste: lê os feeds e mostra as mensagens no terminal, sem WhatsApp.
+  # docker compose run --rm teste
+  teste:
+    build: .
+    profiles: ["teste"]
+    command: ["node", "src/index.js", "--dry-run"]
+    volumes:
+      - ./config.json:/app/config.json

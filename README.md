@@ -37,6 +37,33 @@ Para testar captação/formatação sem WhatsApp (as mensagens saem no terminal)
 npm run dry-run
 ```
 
+## Rodando com Docker
+
+Com o Docker Desktop instalado, dentro da pasta do projeto:
+
+```bash
+cp config.example.json config.json
+```
+
+Edite o `config.json` e suba o bot:
+
+```bash
+docker compose up -d --build
+```
+
+Veja o QR code (e depois os logs) com:
+
+```bash
+docker compose logs -f promo-bot
+```
+
+A sessão do WhatsApp fica em `data/` e sobrevive a reinícios. Outros comandos:
+
+- testar sem WhatsApp: `docker compose run --rm teste`
+- reiniciar depois de mudar o `config.json`: `docker compose restart promo-bot`
+- atualizar o código: `git pull && docker compose up -d --build`
+- parar: `docker compose down`
+
 ## Configurando os grupos
 
 Mande os comandos **no privado do número do bot** (a partir de um número em `admins`, ou na conversa "você mesmo"):
