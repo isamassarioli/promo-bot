@@ -1,0 +1,41 @@
+{
+  "admins": ["5511999999999"],
+
+  "targetGroups": [],
+  "sourceGroups": [],
+
+  "rssFeeds": [
+    { "name": "Exemplo", "url": "https://exemplo.com.br/rss", "intervalSeconds": 120 }
+  ],
+
+  "affiliate": {
+    "expandShortLinks": true,
+    "unknownLinks": "keep",
+    "rules": [
+      { "domain": "amazon.com.br", "clearParams": true, "setParams": { "tag": "SEUTAG-20" } },
+      { "domain": "magazineluiza.com.br", "replaceHost": "www.magazinevoce.com.br", "prefixPath": "/magazineSUALOJA" },
+      { "domain": "magazinevoce.com.br", "replacePath": ["^/magazine[^/]+", "/magazineSUALOJA"] },
+      { "domain": "kabum.com.br", "template": "https://www.awin1.com/cread.php?awinmid=17729&awinaffid=SEU_ID&ued={url}" }
+    ]
+  },
+
+  "filters": {
+    "blockedKeywords": ["aposta", "bet", "tigrinho"],
+    "requiredKeywords": [],
+    "minDiscountPercent": 0,
+    "maxPrice": 0
+  },
+
+  "message": {
+    "footer": "📲 Mais ofertas: entre no nosso grupo!",
+    "sendImages": true
+  },
+
+  "sending": {
+    "minIntervalSeconds": 60,
+    "delayBetweenGroupsSeconds": [4, 10],
+    "quietHours": { "start": 23, "end": 7 },
+    "maxPromoAgeMinutes": 120,
+    "dedupeHours": 48
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "promo-bot",
+  "version": "1.0.0",
+  "description": "Capta promoções (RSS e grupos de WhatsApp), troca os links pelos seus de afiliado e envia para os seus grupos",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "dry-run": "node src/index.js --dry-run",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "pino": "^9.0.0",
+    "qrcode-terminal": "^0.12.0",
+    "rss-parser": "^3.13.0"
+  }
+}
