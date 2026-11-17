@@ -4,7 +4,7 @@ import { extractUrls } from './parser.js';
 const SHORTENERS = [
   'amzn.to', 'a.co', 'bit.ly', 'tinyurl.com', 'cutt.ly', 't.co', 'tidd.ly', 'is.gd',
   'shope.ee', 's.shopee.com.br', 'mercadolivre.com/sec', 'magalu.lu', 'onelink.me',
-  's.click.aliexpress.com', 'divulgador.magalu.com', 'tinyurl.com', 'encurtador.com.br',
+  's.click.aliexpress.com', 'divulgador.magalu.com', 'meli.la', 'tinyurl.com', 'encurtador.com.br',
 ];
 
 // Links que nunca devem ser repassados (convites de outros grupos/canais).
@@ -64,6 +64,7 @@ export async function resolveDealPage(url, rules = [], { timeoutMs = 10000, fetc
       .replace(/\\"/g, '"')
       .replace(/&amp;/g, '&');
     for (const found of extractUrls(html)) {
+      if (/\/social\//.test(found)) continue; // vitrine do afiliado, não é produto
       if (findRule(found, rules)) return found;
     }
   } catch {
@@ -87,6 +88,10 @@ export function applyRules(url, rules = []) {
   const rule = findRule(url, rules);
   if (!rule) return { url, matched: false };
   const u = new URL(url);
+  // Link que já é seu (todos os setParams com os seus valores): não mexe, para não perder
+  // parâmetros que o próprio programa colocou (ex.: "ref" dos links meli.la do Mercado Livre).
+  const sets = Object.entries(rule.setParams || {});
+  if (sets.length && sets.every(([k, v]) => u.searchParams.get(k) === v)) return { url, matched: true, own: true };
   if (rule.clearParams) u.search = '';
   for (const p of rule.removeParams || []) u.searchParams.delete(p);
   if (rule.replaceHost) u.hostname = rule.replaceHost;
@@ -118,10 +123,11 @@ export async function rewriteLinks(text, affiliate = {}, opts = {}) {
       const store = await resolveDealPage(expanded, rules, opts);
       if (store) expanded = await expandUrl(store, opts);
     }
-    const { url: final, matched } = applyRules(expanded, rules);
+    const { url: applied, matched, own } = applyRules(expanded, rules);
+    const final = own ? original : applied;
     links.push({ original, expanded, final, matched });
-    // Sem regra: mantém o link original (curto) em vez do expandido.
-    if (matched) out = out.split(original).join(final);
+    // Sem regra, ou link que já é seu: mantém o link original (curto) em vez do expandido.
+    if (matched && !own) out = out.split(original).join(final);
   }
   return { text: out.replace(/\n{3,}/g, '\n\n').trim(), links };
 }

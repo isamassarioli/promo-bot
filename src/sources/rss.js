@@ -13,6 +13,8 @@ function itemImage(item) {
   return m ? m[1] : null;
 }
 
+const norm = (s = '') => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
 export function itemToPromo(item, feedName) {
   return {
     source: `rss:${feedName}`,
@@ -21,6 +23,7 @@ export function itemToPromo(item, feedName) {
     text: stripHtml(item['content:encoded'] || item.content || item.contentSnippet || ''),
     url: item.link,
     image: itemImage(item),
+    category: (item.categories?.[0] || '').toString().trim(),
   };
 }
 
@@ -37,7 +40,12 @@ export function watchFeed(feed, onPromo, log = () => {}) {
         if (!id || known.has(id)) continue;
         known.add(id);
         if (first && !feed.sendBacklog) continue;
-        if (item.link) await onPromo(itemToPromo(item, feed.name));
+        if (!item.link) continue;
+        const promo = itemToPromo(item, feed.name);
+        const cat = norm(promo.category);
+        if (cat && (feed.skipCategories || []).some((c) => norm(c) === cat)) continue;
+        if (cat && (feed.priorityCategories || []).some((c) => norm(c) === cat)) promo.priority = true;
+        await onPromo(promo);
       }
       first = false;
     } catch (e) {

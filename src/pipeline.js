@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import { rewriteLinks } from './affiliate.js';
 import { parsePromoText, formatBRL } from './parser.js';
+import { fetchProductInfo } from './product.js';
 
 const norm = (s) =>
   s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -44,7 +45,7 @@ export function formatTemplate(promo, link, footer) {
  * - 'repost': mantém o texto original (grupos de WhatsApp), só trocando links.
  * - 'template': monta a mensagem a partir de título/preço/link (RSS).
  */
-export function createPipeline({ config, store, enqueue, log = () => {}, fetchImpl }) {
+export function createPipeline({ config, store, enqueue, log = () => {}, fetchImpl, writer }) {
   const filters = config.filters || {};
   const footer = config.message?.footer || '';
 
@@ -79,16 +80,46 @@ export function createPipeline({ config, store, enqueue, log = () => {}, fetchIm
     if (store.hasSeen(key)) return reject('duplicada', 'duplicates');
     store.markSeen(key);
 
-    const message =
+    let message =
       promo.format === 'template'
         ? formatTemplate(promo, rewritten, footer)
         : [rewritten, footer].filter(Boolean).join('\n\n');
+
+    // Página do produto: foto quando a oferta não trouxe uma, e contexto para a IA.
+    const wantImage = config.message?.sendImages !== false;
+    let image = wantImage ? raw.image || null : null;
+    if (writer || (wantImage && !image)) {
+      const product = links.find((l) => l.matched) || links[0];
+      const page = await fetchProductInfo(product.expanded, { fetchImpl });
+      if (wantImage && !image) image = page.image;
+      if (writer) {
+        let shop = null;
+        try {
+          shop = new URL(product.expanded).hostname.replace(/^www\./, '');
+        } catch {
+          /* sem loja */
+        }
+        const text = await writer({
+          title: raw.title || null,
+          pageTitle: page.title,
+          pageDescription: page.description,
+          price: promo.price,
+          oldPrice: promo.oldPrice,
+          discount: promo.discount,
+          coupon: promo.coupon,
+          store: shop,
+          sourceText: raw.text,
+        });
+        if (text) message = [text, `🛒 ${product.final}`, footer].filter(Boolean).join('\n\n');
+      }
+    }
 
     const item = {
       key,
       source: raw.source,
       text: message,
-      image: config.message?.sendImages === false ? null : raw.image || null,
+      image,
+      priority: !!raw.priority,
       createdAt: Date.now(),
     };
     enqueue(item);

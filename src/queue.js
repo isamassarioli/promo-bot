@@ -26,7 +26,9 @@ export class SendQueue {
   }
 
   push(item) {
-    this.items.push(item);
+    const at = item.priority ? this.items.findIndex((i) => !i.priority) : -1;
+    if (at >= 0) this.items.splice(at, 0, item);
+    else this.items.push(item);
     this.log(`na fila (${this.items.length}): ${item.text.split('\n')[0].slice(0, 60)}`);
   }
 
@@ -50,6 +52,7 @@ export class SendQueue {
       if (!this.items.length || this.store?.paused) continue;
       if (inQuietHours(this.cfg.quietHours)) continue;
       if (Date.now() - this.lastSentAt < this.cfg.minIntervalSeconds * 1000) continue;
+      if (!this.getTargets().length) continue; // sem destino: segura a fila em vez de descartar
 
       const item = this.items.shift();
       if (Date.now() - item.createdAt > this.cfg.maxPromoAgeMinutes * 60_000) {
@@ -61,6 +64,7 @@ export class SendQueue {
       for (let i = 0; i < targets.length; i++) {
         try {
           await this.send(targets[i], item);
+          this.log(`enviada para ${targets[i]}: ${item.text.split('\n')[0].slice(0, 50)}`);
         } catch (e) {
           this.log(`falha ao enviar para ${targets[i]}: ${e.message}`);
         }

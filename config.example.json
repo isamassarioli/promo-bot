@@ -27,6 +27,8 @@
     "maxPrice": 0
   },
 
+  "ai": { "enabled": false, "model": "claude-haiku-5-5" },
+
   "message": {
     "footer": "📲 Mais ofertas: entre no nosso grupo!",
     "sendImages": true

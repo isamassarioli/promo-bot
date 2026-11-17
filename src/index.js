@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
 import { SendQueue } from './queue.js';
 import { createPipeline } from './pipeline.js';
+import { createWriter } from './ai.js';
 import { watchFeed } from './sources/rss.js';
 import { connectWhatsApp, messageText } from './whatsapp.js';
 
@@ -43,7 +44,17 @@ const queue = new SendQueue({
   },
 });
 
-const handlePromo = createPipeline({ config, store, log, enqueue: (item) => queue.push(item) });
+let writer = null;
+if (config.ai?.enabled) {
+  if (process.env.ANTHROPIC_API_KEY) {
+    writer = createWriter({ model: config.ai.model || 'claude-haiku-5-5', log });
+    log(`IA ligada (${config.ai.model || 'claude-haiku-5-5'}): mensagens personalizadas`);
+  } else {
+    log('IA desligada: falta ANTHROPIC_API_KEY no arquivo .env');
+  }
+}
+
+const handlePromo = createPipeline({ config, store, log, writer, enqueue: (item) => queue.push(item) });
 
 // ───── Comandos do administrador (mensagem privada para o número do bot) ─────
 const digits = (s) => String(s || '').split('@')[0].split(':')[0].replace(/\D/g, '');
@@ -57,7 +68,7 @@ function isAdmin(msg) {
 const HELP = `*Comandos*
 !grupos — lista seus grupos e IDs
 !destino add|rm <id> — grupos que recebem as promoções
-!fonte add|rm <id> — grupos de onde as promoções são captadas
+!fonte add|rm <id> [id...] — grupos de onde as promoções são captadas (vários de uma vez)
 !promo <texto> — envia uma promoção manual (pode ser legenda de foto)
 !status — fila e estatísticas
 !pausar / !retomar`;
@@ -80,13 +91,16 @@ async function handleCommand(text, msg) {
     }
     case '!destino':
     case '!fonte': {
-      const [action, id] = rest;
-      if (!['add', 'rm'].includes(action) || !/@g\.us$/.test(id || '')) return reply(`Uso: ${cmd} add|rm 1203...@g.us`);
+      // Aceita vários IDs de uma vez, separados por espaço ou linha.
+      const [action, ...ids] = rest;
+      if (!['add', 'rm'].includes(action) || !ids.length || !ids.every((id) => /@g\.us$/.test(id)))
+        return reply(`Uso: ${cmd} add|rm 1203...@g.us [outro@g.us ...]`);
       const isTarget = cmd.toLowerCase() === '!destino';
       const other = isTarget ? config.sourceGroups : config.targetGroups;
-      if (action === 'add' && other.includes(id)) return reply('Esse grupo já é fonte/destino. Um grupo não pode ser os dois.');
-      toggle(isTarget ? config.targetGroups : config.sourceGroups, action, id);
-      return reply(`OK. Destinos: ${config.targetGroups.length} | Fontes: ${config.sourceGroups.length}`);
+      const conflicts = action === 'add' ? ids.filter((id) => other.includes(id)) : [];
+      for (const id of ids) if (!conflicts.includes(id)) toggle(isTarget ? config.targetGroups : config.sourceGroups, action, id);
+      const warn = conflicts.length ? `\n⚠️ Ignorados (já são ${isTarget ? 'fonte' : 'destino'}): ${conflicts.length}` : '';
+      return reply(`OK. Destinos: ${config.targetGroups.length} | Fontes: ${config.sourceGroups.length}${warn}`);
     }
     case '!promo': {
       const body = text.trim().slice(cmd.length).trim();

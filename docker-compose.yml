@@ -4,6 +4,9 @@ services:
     container_name: promo-bot
     restart: unless-stopped
     tty: true
+    env_file:
+      - path: .env
+        required: false
     environment:
       - TZ=America/Sao_Paulo
     volumes:
@@ -16,5 +19,8 @@ services:
     build: .
     profiles: ["teste"]
     command: ["node", "src/index.js", "--dry-run"]
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - ./config.json:/app/config.json

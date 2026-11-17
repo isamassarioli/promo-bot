@@ -7,6 +7,8 @@ import { createPipeline } from '../src/pipeline.js';
 import { inQuietHours, SendQueue } from '../src/queue.js';
 import { Store } from '../src/store.js';
 import { watchFeed } from '../src/sources/rss.js';
+import { createWriter, validateMessage } from '../src/ai.js';
+import { fetchProductInfo } from '../src/product.js';
 
 const rules = [
   { domain: 'amazon.com.br', clearParams: true, setParams: { tag: 'meu-20' } },
@@ -93,7 +95,8 @@ function setup(extra = {}) {
   const sent = [];
   const store = new Store(null);
   const config = { affiliate: { rules, expandShortLinks: false }, message: { footer: 'RODAPÉ' }, filters: {}, ...extra };
-  const handle = createPipeline({ config, store, enqueue: (i) => sent.push(i) });
+  const fetchImpl = async (url) => ({ url, text: async () => '' });
+  const handle = createPipeline({ config, store, fetchImpl, writer: extra.writer, enqueue: (i) => sent.push(i) });
   return { handle, sent, store };
 }
 
@@ -132,6 +135,61 @@ test('pipeline: unknownLinks drop descarta loja sem regra, exceto no !promo', as
   assert.equal((await handle({ source: 'grupo:x', format: 'repost', text })).reason, 'loja sem regra de afiliado');
   assert.equal((await handle({ source: 'manual', format: 'repost', text })).ok, true);
   assert.equal(sent[0].text, 'Fone R$ 49 https://vt.tiktok.com/ZSabc123/\n\nRODAPÉ');
+});
+
+test('fila: prioridade passa na frente das comuns, mantendo a ordem entre prioritárias', () => {
+  const q = new SendQueue({ getTargets: () => [], send: async () => {} });
+  for (const [k, priority] of [['a', false], ['b', true], ['c', false], ['d', true]]) q.push({ key: k, text: k, priority });
+  assert.deepEqual(q.items.map((i) => i.key), ['b', 'd', 'a', 'c']);
+});
+
+test('agregador: ignora vitrine /social/ do Mercado Livre', async () => {
+  const ml = [{ domain: 'mercadolivre.com.br', clearParams: true, setParams: { matt_word: 'minha' } }];
+  const html = '<a href="https://www.mercadolivre.com.br/social/deles?matt_word=deles">x</a>';
+  const fetchImpl = async (url) => ({ url, text: async () => html });
+  const r = await rewriteLinks('https://www.ofertaesperta.com/promocao/9/x', { rules: ml, dealPages: ['ofertaesperta.com'] }, { fetchImpl });
+  assert.equal(r.links[0].matched, false);
+});
+
+test('link que já é seu (meli.la) fica intacto', async () => {
+  const ml = [{ domain: 'mercadolivre.com.br', clearParams: true, setParams: { matt_word: 'minha', matt_tool: '123' } }];
+  const fetchImpl = async () => ({ url: 'https://www.mercadolivre.com.br/social/minha?matt_word=minha&matt_tool=123&ref=PRODUTO' });
+  const r = await rewriteLinks('Fone https://meli.la/abc', { rules: ml }, { fetchImpl });
+  assert.equal(r.text, 'Fone https://meli.la/abc');
+  assert.equal(r.links[0].matched, true);
+});
+
+test('IA: valida link e preços fora dos dados', () => {
+  assert.equal(validateMessage('🎧 *Fone* por *R$ 179,90*', [179.9]), true);
+  assert.equal(validateMessage('🎧 *Fone* ~De R$ 299~ por *R$ 179,90*', [179.9, 299]), true);
+  assert.equal(validateMessage('🎧 *Fone* por *R$ 99*', [179.9]), false);
+  assert.equal(validateMessage('veja https://x.com', []), false);
+  assert.equal(validateMessage('', []), false);
+});
+
+test('IA: usa o texto do Claude e cai no padrão se falhar', async () => {
+  const fakeClient = (reply) => ({ messages: { create: async () => reply } });
+  const ok = createWriter({ client: fakeClient({ stop_reason: 'end_turn', content: [{ type: 'text', text: '🎧 *Fone JBL* por *R$ 179*' }] }) });
+  assert.equal(await ok({ title: 'Fone JBL', price: 179 }), '🎧 *Fone JBL* por *R$ 179*');
+  const bad = createWriter({ client: fakeClient({ stop_reason: 'end_turn', content: [{ type: 'text', text: '*Fone* por R$ 1' }] }) });
+  assert.equal(await bad({ title: 'Fone', price: 179 }), null);
+  const refused = createWriter({ client: fakeClient({ stop_reason: 'refusal', content: [] }) });
+  assert.equal(await refused({ title: 'Fone', price: 179 }), null);
+  const broken = createWriter({ client: { messages: { create: async () => { throw new Error('rede'); } } } });
+  assert.equal(await broken({ title: 'Fone', price: 179 }), null);
+});
+
+test('pipeline: mensagem da IA + link de afiliado + rodapé', async () => {
+  const writer = async () => '🎧 *Echo Dot* por *R$ 199*';
+  const { handle, sent } = setup({ writer });
+  await handle({ source: 'g', format: 'repost', text: 'Echo Dot R$ 199 https://www.amazon.com.br/dp/B0E?tag=x' });
+  assert.equal(sent[0].text, '🎧 *Echo Dot* por *R$ 199*\n\n🛒 https://www.amazon.com.br/dp/B0E?tag=meu-20\n\nRODAPÉ');
+});
+
+test('página do produto: lê og:image e og:title', async () => {
+  const html = '<meta property="og:title" content="Fone &amp; Cia"><meta content="https://img.x/f.jpg" property="og:image">';
+  const info = await fetchProductInfo('https://loja.x/p', { fetchImpl: async () => ({ text: async () => html }) });
+  assert.deepEqual(info, { title: 'Fone & Cia', description: null, image: 'https://img.x/f.jpg' });
 });
 
 test('horário de silêncio', () => {

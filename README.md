@@ -72,7 +72,7 @@ Mande os comandos **no privado do número do bot** (a partir de um número em `a
 |---|---|
 | `!grupos` | lista os grupos em que o número está, com os IDs |
 | `!destino add <id>` / `rm` | grupos que **recebem** promoções |
-| `!fonte add <id>` / `rm` | grupos de onde as promoções são **captadas** |
+| `!fonte add <id>` / `rm` | grupos de onde as promoções são **captadas** (aceita vários IDs de uma vez, em `!destino` também) |
 | `!promo <texto>` | envia uma promoção manual (pode ser legenda de foto) |
 | `!status` | fila e estatísticas |
 | `!pausar` / `!retomar` | pausa/retoma os envios |
@@ -105,6 +105,22 @@ sem uma regra, o link original é mantido — use `"drop"` se não quiser repass
 - `sending`: `minIntervalSeconds` entre promoções, `delayBetweenGroupsSeconds` [mín, máx], `quietHours`,
   `maxPromoAgeMinutes` (promoção velha na fila é descartada), `dedupeHours`.
 - `rssFeeds`: `{ name, url, intervalSeconds }`. Na primeira leitura o histórico é ignorado.
+  Opcional: `priorityCategories` (passam na frente da fila) e `skipCategories` (ignoradas), pelo nome da categoria do feed.
+
+## Mensagens com IA (opcional)
+
+Com `"ai": { "enabled": true, "model": "claude-haiku-5-5" }` no `config.json`, cada oferta ganha um texto
+escrito pelo Claude a partir do título, preço e descrição da página do produto. O link de afiliado e o
+rodapé continuam sendo colocados pelo bot. Se a IA falhar, citar um preço que não está nos dados ou
+colocar um link, o bot usa o formato padrão.
+
+Crie a chave em console.anthropic.com e coloque num arquivo `.env` (veja `.env.example`):
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Depois: `docker compose up -d --build`. O bot também busca a foto do produto na página quando a oferta não traz uma.
 
 ## Avisos
 

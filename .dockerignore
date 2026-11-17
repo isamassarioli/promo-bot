@@ -5,3 +5,5 @@ landing
 test
 .git
 index.html
+.env
+.env.*

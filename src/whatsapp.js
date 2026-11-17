@@ -55,9 +55,12 @@ export async function connectWhatsApp({ authDir, onMessage, onReady, log = conso
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-      if (type !== 'notify') return;
       for (const msg of messages) {
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
+        const text = messageText(msg);
+        if (text.startsWith('!') && !msg.key.remoteJid?.endsWith('@g.us'))
+          log(`comando recebido (${type}, ${msg.key.fromMe ? 'enviado por você' : msg.key.remoteJid}): ${text.slice(0, 40)}`);
+        if (type !== 'notify') continue;
         try {
           await onMessage?.(msg, api);
         } catch (e) {
