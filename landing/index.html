@@ -7,7 +7,10 @@
 <meta name="description" content="Grupo gratuito de WhatsApp com as melhores promoções do dia: cupons, quedas de preço e ofertas relâmpago, filtradas para você.">
 <meta property="og:title" content="Radar de Ofertas — promoções no seu WhatsApp">
 <meta property="og:description" content="Cupons, quedas de preço e ofertas relâmpago, direto no seu WhatsApp. É grátis.">
+<meta property="og:image" content="https://isamassarioli.github.io/promo-bot/landing/logo.png">
 <meta name="theme-color" content="#0b3d2e">
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
 <style>
   :root{
     --ink:#10231c; --muted:#5b6b64; --bg:#f6f4ee; --card:#fff; --line:#e4e0d4;
@@ -34,7 +37,7 @@
   header{background:var(--deep);color:#fff}
   .nav{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
   .logo{font-weight:800;font-size:1.15rem;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}
-  .logo i{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--lime);color:var(--deep);font-style:normal;font-size:1rem}
+  .logo img{width:34px;height:34px;border-radius:9px;display:block}
   .nav .btn{padding:10px 18px;font-size:.9rem}
   .hero{display:grid;gap:40px;align-items:center;padding:36px 0 72px}
   .hero h1{font-size:clamp(2.2rem,7vw,3.7rem);font-weight:800}
@@ -113,7 +116,7 @@
 <header>
   <div class="wrap">
     <nav class="nav">
-      <div class="logo"><i>%</i> Radar de Ofertas</div>
+      <div class="logo"><img src="logo.png" alt="" width="34" height="34"> Radar de Ofertas</div>
       <a class="btn js-wa" href="#entrar">Entrar no grupo</a>
     </nav>
 
@@ -247,7 +250,7 @@
   // const WHATSAPP_LINK = 'https://chat.whatsapp.com/XXXXXXXXXXXX';
   // Enquanto estiver vazio, os botões mostram "em breve".
   // ─────────────────────────────────────────────────────────────
-  const WHATSAPP_LINK = '';
+  const WHATSAPP_LINK = 'https://chat.whatsapp.com/IIwnhMhrY7I29m5Nx1TIxl';
 
   const toast = document.querySelector('.toast');
   let timer;
