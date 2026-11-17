@@ -71,7 +71,8 @@ export function createPipeline({ config, store, enqueue, log = () => {}, fetchIm
     const body = promo.format === 'template' ? (raw.url || parsed.urls[0]) : raw.text;
     const { text: rewritten, links } = await rewriteLinks(body, config.affiliate, { fetchImpl });
     if (!links.length) return reject('só tinha link de convite');
-    if (config.affiliate?.unknownLinks === 'drop' && !links.some((l) => l.matched))
+    // !promo é do próprio admin (ex.: link gerado no app do TikTok Shop): nunca descarta por falta de regra.
+    if (raw.source !== 'manual' && config.affiliate?.unknownLinks === 'drop' && !links.some((l) => l.matched))
       return reject('loja sem regra de afiliado');
 
     const key = dedupeKey(promo, links);

@@ -126,6 +126,14 @@ test('pipeline: template (RSS) e filtros', async () => {
   assert.equal((await handle({ source: 'g', text: 'Tablet https://x.com/tablet de R$ 100 por R$ 50' })).ok, true); // "tablet" não casa com "bet"
 });
 
+test('pipeline: unknownLinks drop descarta loja sem regra, exceto no !promo', async () => {
+  const { handle, sent } = setup({ affiliate: { rules, expandShortLinks: false, unknownLinks: 'drop' } });
+  const text = 'Fone R$ 49 https://vt.tiktok.com/ZSabc123/';
+  assert.equal((await handle({ source: 'grupo:x', format: 'repost', text })).reason, 'loja sem regra de afiliado');
+  assert.equal((await handle({ source: 'manual', format: 'repost', text })).ok, true);
+  assert.equal(sent[0].text, 'Fone R$ 49 https://vt.tiktok.com/ZSabc123/\n\nRODAPÉ');
+});
+
 test('horário de silêncio', () => {
   const at = (h) => new Date(2026, 0, 1, h);
   assert.equal(inQuietHours({ start: 23, end: 7 }, at(2)), true);

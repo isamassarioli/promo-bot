@@ -90,7 +90,8 @@ Cada regra vale para um domínio (e subdomínios):
 | `template` | deep link de rede de afiliados (Awin, Lomadee...); `{url}` é a URL do produto |
 
 Links encurtados (amzn.to, bit.ly, shope.ee...) são expandidos antes. `"unknownLinks": "drop"` descarta
-promoções de lojas sem regra.
+promoções de lojas sem regra (exceto as enviadas com `!promo`, que são sempre aceitas — use para links
+gerados no app, como os do TikTok Shop).
 
 `"dealPages": ["ofertaesperta.com"]`: sites agregadores cujo link leva para uma página deles, e não para a loja.
 O bot abre essa página, pega o link da loja que tem regra (ex. Amazon) e troca a tag pela sua.
