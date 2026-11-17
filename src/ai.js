@@ -36,7 +36,7 @@ export function validateMessage(text, allowedPrices = []) {
  * Cria a função que escreve as mensagens. Retorna null quando a IA falha ou quebra uma regra,
  * e aí o bot usa o formato padrão.
  */
-export function createWriter({ model = 'claude-haiku-5-5', client, log = () => {} } = {}) {
+export function createWriter({ model = 'claude-haiku-5-5', client, log = () => {}, onUsage = () => {}, onError = () => {} } = {}) {
   const anthropic = client || new Anthropic();
 
   return async function write(offer) {
@@ -59,6 +59,7 @@ export function createWriter({ model = 'claude-haiku-5-5', client, log = () => {
         system: SYSTEM,
         messages: [{ role: 'user', content: JSON.stringify(data, null, 2) }],
       });
+      onUsage(res.usage);
       if (res.stop_reason !== 'end_turn') {
         log(`IA não escreveu (${res.stop_reason}); usando formato padrão`);
         return null;
@@ -74,10 +75,14 @@ export function createWriter({ model = 'claude-haiku-5-5', client, log = () => {
       }
       return text;
     } catch (e) {
-      if (e instanceof Anthropic.AuthenticationError) log('IA: chave ANTHROPIC_API_KEY inválida');
-      else if (e instanceof Anthropic.RateLimitError) log('IA: limite de uso atingido');
+      let kind = 'other';
+      if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
+        kind = 'auth';
+        log('IA: chave ANTHROPIC_API_KEY inválida ou sem permissão');
+      } else if (e instanceof Anthropic.RateLimitError) log('IA: limite de uso atingido');
       else if (e instanceof Anthropic.APIError) log(`IA: erro ${e.status}: ${e.message}`);
       else log(`IA: ${e.message}`);
+      onError(kind, e.message);
       return null;
     }
   };

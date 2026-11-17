@@ -1,5 +1,6 @@
 {
   "admins": ["5511999999999"],
+  "notify": [],
 
   "targetGroups": [],
   "sourceGroups": [],

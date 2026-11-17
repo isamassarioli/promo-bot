@@ -75,6 +75,7 @@ Mande os comandos **no privado do número do bot** (a partir de um número em `a
 | `!fonte add <id>` / `rm` | grupos de onde as promoções são **captadas** (aceita vários IDs de uma vez, em `!destino` também) |
 | `!promo <texto>` | envia uma promoção manual (pode ser legenda de foto) |
 | `!status` | fila e estatísticas |
+| `!relatorio` | relatório do dia até agora |
 | `!pausar` / `!retomar` | pausa/retoma os envios |
 
 ## Regras de afiliado (`affiliate.rules`)
@@ -106,6 +107,19 @@ sem uma regra, o link original é mantido — use `"drop"` se não quiser repass
   `maxPromoAgeMinutes` (promoção velha na fila é descartada), `dedupeHours`.
 - `rssFeeds`: `{ name, url, intervalSeconds }`. Na primeira leitura o histórico é ignorado.
   Opcional: `priorityCategories` (passam na frente da fila) e `skipCategories` (ignoradas), pelo nome da categoria do feed.
+
+## Relatório diário e alertas
+
+Todo dia às 8h o bot manda para os números em `"notify"` (ou, se vazio, para os `"admins"`) um resumo das
+últimas 24h: ofertas captadas e enviadas, membros do grupo e gasto da IA. Também avisa quando um feed
+fica 1h sem responder, quando passam 3h sem nenhum envio, quando a IA fica sem crédito ou com a chave
+inválida, quando o grupo passa de 950 membros e quando o WhatsApp volta depois de cair. Cada alerta
+se repete no máximo a cada 6h.
+
+```json
+"admins": ["5511999999999", "5511988888888"],
+"notify": ["5511988888888"]
+```
 
 ## Mensagens com IA (opcional)
 

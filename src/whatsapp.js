@@ -17,7 +17,7 @@ export function messageText(msg) {
   );
 }
 
-export async function connectWhatsApp({ authDir, onMessage, onReady, log = console.log }) {
+export async function connectWhatsApp({ authDir, onMessage, onReady, onClose, log = console.log }) {
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const api = { sock: null, ready: false };
 
@@ -44,6 +44,7 @@ export async function connectWhatsApp({ authDir, onMessage, onReady, log = conso
       }
       if (connection === 'close') {
         api.ready = false;
+        onClose?.();
         const code = lastDisconnect?.error?.output?.statusCode;
         if (code === DisconnectReason.loggedOut) {
           log('❌ Sessão encerrada. Apague a pasta data/auth e rode de novo para escanear o QR.');
@@ -84,6 +85,20 @@ export async function connectWhatsApp({ authDir, onMessage, onReady, log = conso
   };
 
   api.sendText = (jid, text) => api.sock.sendMessage(jid, { text });
+
+  /** Número de telefone por trás de um id @lid (contas novas do WhatsApp escondem o número). */
+  api.phoneForLid = async (lid) => {
+    try {
+      return (await api.sock.signalRepository?.lidMapping?.getPNForLID(lid)) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  api.groupInfo = async (jid) => {
+    const g = await api.sock.groupMetadata(jid);
+    return { id: jid, name: g.subject, size: g.participants?.length || 0 };
+  };
 
   api.listGroups = async () => {
     const groups = await api.sock.groupFetchAllParticipating();

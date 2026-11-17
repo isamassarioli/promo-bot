@@ -5,6 +5,7 @@ import { Store } from './store.js';
 import { SendQueue } from './queue.js';
 import { createPipeline } from './pipeline.js';
 import { createWriter } from './ai.js';
+import { createMonitor } from './monitor.js';
 import { watchFeed } from './sources/rss.js';
 import { connectWhatsApp, messageText } from './whatsapp.js';
 
@@ -30,11 +31,35 @@ setInterval(() => store.prune(config.sending?.dedupeHours || 48), 3600_000).unre
 
 let wa = null;
 
+// Avisos vão para config.notify (ou, se vazio, para os admins).
+const notifyJids = () => (config.notify?.length ? config.notify : config.admins).map((n) => `${String(n).replace(/\D/g, '')}@s.whatsapp.net`);
+let groupCache = { at: 0, groups: [] };
+const monitor = createMonitor({
+  store,
+  config,
+  log,
+  getQueueSize: () => queue.size,
+  notify: async (text) => {
+    if (dryRun || !wa?.ready) return log(`(aviso não enviado) ${text.split('\n')[0]}`);
+    for (const jid of notifyJids()) await wa.sendText(jid, text);
+  },
+  getGroups: async () => {
+    if (dryRun || !wa?.ready) return [];
+    if (Date.now() - groupCache.at > 3600_000) {
+      const groups = [];
+      for (const id of config.targetGroups) groups.push(await wa.groupInfo(id).catch(() => ({ id, name: id, size: 0 })));
+      groupCache = { at: Date.now(), groups };
+    }
+    return groupCache.groups;
+  },
+});
+
 const queue = new SendQueue({
   sending: dryRun ? { ...config.sending, minIntervalSeconds: 0, quietHours: null } : config.sending,
   store,
   log,
   getTargets: () => (dryRun ? ['console'] : config.targetGroups),
+  onSent: () => monitor.sent(),
   send: async (jid, item) => {
     if (dryRun) {
       console.log(`\n──────── [${item.source}] ────────\n${item.text}\n${item.image ? '(com imagem)' : ''}`);
@@ -47,7 +72,12 @@ const queue = new SendQueue({
 let writer = null;
 if (config.ai?.enabled) {
   if (process.env.ANTHROPIC_API_KEY) {
-    writer = createWriter({ model: config.ai.model || 'claude-haiku-5-5', log });
+    writer = createWriter({
+      model: config.ai.model || 'claude-haiku-5-5',
+      log,
+      onUsage: (u) => monitor.aiUsage(u),
+      onError: (kind, message) => monitor.aiError(kind, message),
+    });
     log(`IA ligada (${config.ai.model || 'claude-haiku-5-5'}): mensagens personalizadas`);
   } else {
     log('IA desligada: falta ANTHROPIC_API_KEY no arquivo .env');
@@ -59,9 +89,12 @@ const handlePromo = createPipeline({ config, store, log, writer, enqueue: (item)
 // ───── Comandos do administrador (mensagem privada para o número do bot) ─────
 const digits = (s) => String(s || '').split('@')[0].split(':')[0].replace(/\D/g, '');
 
-function isAdmin(msg) {
+async function isAdmin(msg) {
   if (msg.key.fromMe) return true;
-  const ids = [msg.key.remoteJid, msg.key.remoteJidAlt, msg.key.participant, msg.key.participantAlt].map(digits);
+  const raw = [msg.key.remoteJid, msg.key.remoteJidAlt, msg.key.participant, msg.key.participantAlt].filter(Boolean);
+  const ids = raw.map(digits);
+  // Contas novas chegam como "@lid", sem o número: pergunta ao WhatsApp qual é o telefone.
+  for (const jid of raw.filter((j) => j.endsWith('@lid'))) ids.push(digits(await wa?.phoneForLid(jid)));
   return config.admins.some((a) => ids.includes(digits(a)));
 }
 
@@ -71,6 +104,7 @@ const HELP = `*Comandos*
 !fonte add|rm <id> [id...] — grupos de onde as promoções são captadas (vários de uma vez)
 !promo <texto> — envia uma promoção manual (pode ser legenda de foto)
 !status — fila e estatísticas
+!relatorio — relatório do dia até agora
 !pausar / !retomar`;
 
 function toggle(list, action, id) {
@@ -115,6 +149,9 @@ async function handleCommand(text, msg) {
           `Duplicadas: ${s.duplicates} | Filtradas: ${s.filtered}\nDestinos: ${config.targetGroups.length} | Fontes: ${config.sourceGroups.length}`,
       );
     }
+    case '!relatorio':
+    case '!relatório':
+      return reply(await monitor.report());
     case '!pausar':
       store.paused = true;
       return reply('⏸️ Envios pausados (a captação continua).');
@@ -132,7 +169,9 @@ async function onMessage(msg, api) {
   const isGroup = jid.endsWith('@g.us');
 
   if (!isGroup) {
-    if (text.startsWith('!') && isAdmin(msg)) await handleCommand(text, msg);
+    if (!text.startsWith('!')) return;
+    if (await isAdmin(msg)) await handleCommand(text, msg);
+    else log(`comando ignorado: ${jid} não está em "admins"`);
     return;
   }
   // Captação: mensagens de outros participantes nos grupos-fonte.
@@ -144,7 +183,10 @@ async function onMessage(msg, api) {
 for (const feed of config.rssFeeds || []) {
   if (!feed.url || feed.url.includes('exemplo.com')) continue;
   log(`monitorando RSS: ${feed.name}`);
-  watchFeed(dryRun ? { ...feed, sendBacklog: true } : feed, handlePromo, log);
+  watchFeed(dryRun ? { ...feed, sendBacklog: true } : feed, handlePromo, log, {
+    ok: (name) => monitor.feedOk(name),
+    error: (name, message) => monitor.feedError(name, message),
+  });
 }
 
 if (dryRun) {
@@ -155,9 +197,13 @@ if (dryRun) {
     authDir: path.join(root, 'data', 'auth'),
     log,
     onMessage,
+    onClose: () => monitor.disconnected(),
     onReady: () => {
       queue.start();
+      monitor.connected();
       if (!config.targetGroups.length) log('Nenhum grupo de destino. Envie "!grupos" no privado do bot para configurar.');
     },
   });
 }
+
+if (!dryRun) monitor.start();

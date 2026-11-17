@@ -28,7 +28,7 @@ export function itemToPromo(item, feedName) {
 }
 
 /** Inicia o polling de um feed. Na primeira leitura só memoriza os itens (não envia o histórico). */
-export function watchFeed(feed, onPromo, log = () => {}) {
+export function watchFeed(feed, onPromo, log = () => {}, hooks = {}) {
   const known = new Set();
   let first = true;
 
@@ -48,8 +48,10 @@ export function watchFeed(feed, onPromo, log = () => {}) {
         await onPromo(promo);
       }
       first = false;
+      hooks.ok?.(feed.name);
     } catch (e) {
       log(`RSS ${feed.name}: ${e.message}`);
+      hooks.error?.(feed.name, e.message);
     }
   }
 

@@ -9,7 +9,7 @@ export function inQuietHours(quiet, date = new Date()) {
 }
 
 export class SendQueue {
-  constructor({ sending = {}, getTargets, send, store, log = () => {} }) {
+  constructor({ sending = {}, getTargets, send, store, log = () => {}, onSent = () => {} }) {
     this.cfg = {
       minIntervalSeconds: 60,
       delayBetweenGroupsSeconds: [4, 10],
@@ -20,6 +20,7 @@ export class SendQueue {
     this.send = send;
     this.store = store;
     this.log = log;
+    this.onSent = onSent;
     this.items = [];
     this.running = false;
     this.lastSentAt = 0;
@@ -72,6 +73,7 @@ export class SendQueue {
       }
       this.lastSentAt = Date.now();
       this.store?.bump('sent');
+      this.onSent(item);
     }
   }
 }

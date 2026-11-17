@@ -9,6 +9,7 @@ import { Store } from '../src/store.js';
 import { watchFeed } from '../src/sources/rss.js';
 import { createWriter, validateMessage } from '../src/ai.js';
 import { fetchProductInfo } from '../src/product.js';
+import { createMonitor } from '../src/monitor.js';
 
 const rules = [
   { domain: 'amazon.com.br', clearParams: true, setParams: { tag: 'meu-20' } },
@@ -190,6 +191,59 @@ test('página do produto: lê og:image e og:title', async () => {
   const html = '<meta property="og:title" content="Fone &amp; Cia"><meta content="https://img.x/f.jpg" property="og:image">';
   const info = await fetchProductInfo('https://loja.x/p', { fetchImpl: async () => ({ text: async () => html }) });
   assert.deepEqual(info, { title: 'Fone & Cia', description: null, image: 'https://img.x/f.jpg' });
+});
+
+test('monitor: relatório diário às 8h com o que aconteceu desde o último', async () => {
+  const store = new Store(null);
+  const sent = [];
+  let clock = new Date(2026, 10, 17, 7, 30);
+  const mon = createMonitor({
+    store, config: { ai: { enabled: true }, targetGroups: ['g1'] }, now: () => clock,
+    notify: async (t) => sent.push(t), getQueueSize: () => 2,
+    getGroups: async () => [{ id: 'g1', name: 'Radar', size: 40 }],
+  });
+  store.bump('captured'); store.bump('captured'); store.bump('sent');
+  mon.aiUsage({ input_tokens: 1_000_000, output_tokens: 0 });
+  await mon.check();
+  assert.equal(sent.length, 0); // antes das 8h
+  clock = new Date(2026, 10, 17, 8, 1);
+  await mon.check();
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], /Captadas: 2 \| Enviadas: 1/);
+  assert.match(sent[0], /Radar: \*40\* membros/);
+  assert.match(sent[0], /IA: 1 mensagens, ~US\$ 0,10/);
+  await mon.check();
+  assert.equal(sent.length, 1); // um por dia
+  store.bump('sent');
+  clock = new Date(2026, 10, 18, 9, 0);
+  await mon.check();
+  assert.match(sent[1], /Enviadas: 1/);
+  assert.match(sent[1], /\+0 desde o último relatório/);
+});
+
+test('monitor: alertas de feed parado, IA sem crédito e grupo cheio, sem repetir', async () => {
+  const store = new Store(null);
+  store.data.monitor = { lastReportDay: '17/11/2026' };
+  const sent = [];
+  let clock = new Date(2026, 10, 17, 10, 0);
+  const mon = createMonitor({
+    store, config: { targetGroups: ['g1'], sending: { quietHours: { start: 23, end: 7 } } }, now: () => clock,
+    notify: async (t) => sent.push(t), getGroups: async () => [{ id: 'g1', name: 'Radar', size: 1000 }],
+  });
+  mon.feedError('Oferta Esperta', 'timeout');
+  clock = new Date(2026, 10, 17, 11, 5);
+  await mon.check();
+  assert.ok(sent.some((t) => /Oferta Esperta\* não responde/.test(t)));
+  assert.ok(sent.some((t) => /1000 membros/.test(t)));
+  const before = sent.length;
+  await mon.check();
+  assert.equal(sent.length, before); // não repete o mesmo alerta
+  await mon.aiError('other', 'Your credit balance is too low');
+  assert.match(sent.at(-1), /A IA parou/);
+  mon.feedOk('Oferta Esperta');
+  clock = new Date(2026, 10, 17, 11, 10);
+  await mon.check();
+  assert.equal(sent.filter((t) => /não responde/.test(t)).length, 1);
 });
 
 test('horário de silêncio', () => {
