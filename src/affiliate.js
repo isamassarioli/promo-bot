@@ -38,6 +38,40 @@ export async function expandUrl(url, { timeoutMs = 8000, fetchImpl = fetch } = {
   }
 }
 
+const hostMatches = (url, domains = []) => {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return domains.some((d) => host === d || host.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Sites agregadores (ex.: ofertaesperta.com) linkam para uma página própria, que só então leva à loja.
+ * Abre essa página e devolve o primeiro link de loja que tenha regra de afiliado, ou null.
+ */
+export async function resolveDealPage(url, rules = [], { timeoutMs = 10000, fetchImpl = fetch } = {}) {
+  try {
+    const res = await fetchImpl(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126 Safari/537.36' },
+    });
+    const html = (await res.text())
+      .replace(/\\u0026/gi, '&')
+      .replace(/\\\//g, '/')
+      .replace(/\\"/g, '"')
+      .replace(/&amp;/g, '&');
+    for (const found of extractUrls(html)) {
+      if (findRule(found, rules)) return found;
+    }
+  } catch {
+    /* página fora do ar: fica com o link original */
+  }
+  return null;
+}
+
 function findRule(url, rules) {
   let host;
   try {
@@ -79,7 +113,11 @@ export async function rewriteLinks(text, affiliate = {}, opts = {}) {
     .join('\n');
 
   for (const original of [...new Set(extractUrls(out))]) {
-    const expanded = affiliate.expandShortLinks === false ? original : await expandUrl(original, opts);
+    let expanded = affiliate.expandShortLinks === false ? original : await expandUrl(original, opts);
+    if (hostMatches(expanded, affiliate.dealPages)) {
+      const store = await resolveDealPage(expanded, rules, opts);
+      if (store) expanded = await expandUrl(store, opts);
+    }
     const { url: final, matched } = applyRules(expanded, rules);
     links.push({ original, expanded, final, matched });
     // Sem regra: mantém o link original (curto) em vez do expandido.

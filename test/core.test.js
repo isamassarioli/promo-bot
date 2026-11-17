@@ -71,6 +71,24 @@ test('rewriteLinks expande encurtador e remove convites', async () => {
   assert.equal(links.length, 1);
 });
 
+test('rewriteLinks abre página de agregador e usa o link da loja', async () => {
+  const pages = {
+    'https://www.ofertaesperta.com/promocao/1/fone':
+      '<img src="https://s3.amazonaws.com/x.png"><script>{\\"url\\":\\"https:\\/\\/www.amazon.com.br\\/dp\\/B0FONE?tag=deles-20\\"}</script>',
+    'https://www.ofertaesperta.com/promocao/2/loja-sem-regra': '<a href="https://www.casasbahia.com.br/p/1">ver</a>',
+  };
+  const fetchImpl = async (url) => ({ url, text: async () => pages[url] ?? '' });
+  const affiliate = { rules, dealPages: ['ofertaesperta.com'] };
+
+  const ok = await rewriteLinks('https://www.ofertaesperta.com/promocao/1/fone', affiliate, { fetchImpl });
+  assert.equal(ok.text, 'https://www.amazon.com.br/dp/B0FONE?tag=meu-20');
+  assert.equal(ok.links[0].matched, true);
+
+  const none = await rewriteLinks('https://www.ofertaesperta.com/promocao/2/loja-sem-regra', affiliate, { fetchImpl });
+  assert.equal(none.text, 'https://www.ofertaesperta.com/promocao/2/loja-sem-regra');
+  assert.equal(none.links[0].matched, false);
+});
+
 function setup(extra = {}) {
   const sent = [];
   const store = new Store(null);

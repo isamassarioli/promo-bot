@@ -11,6 +11,7 @@
   "affiliate": {
     "expandShortLinks": true,
     "unknownLinks": "keep",
+    "dealPages": ["ofertaesperta.com"],
     "rules": [
       { "domain": "amazon.com.br", "clearParams": true, "setParams": { "tag": "SEUTAG-20" } },
       { "domain": "magazineluiza.com.br", "replaceHost": "www.magazinevoce.com.br", "prefixPath": "/magazineSUALOJA" },

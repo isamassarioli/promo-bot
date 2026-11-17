@@ -90,7 +90,12 @@ Cada regra vale para um domínio (e subdomínios):
 | `template` | deep link de rede de afiliados (Awin, Lomadee...); `{url}` é a URL do produto |
 
 Links encurtados (amzn.to, bit.ly, shope.ee...) são expandidos antes. `"unknownLinks": "drop"` descarta
-promoções de lojas sem regra. Shopee e Mercado Livre só geram link de afiliado pelo painel/API deles:
+promoções de lojas sem regra.
+
+`"dealPages": ["ofertaesperta.com"]`: sites agregadores cujo link leva para uma página deles, e não para a loja.
+O bot abre essa página, pega o link da loja que tem regra (ex. Amazon) e troca a tag pela sua.
+
+Shopee e Mercado Livre só geram link de afiliado pelo painel/API deles:
 sem uma regra, o link original é mantido — use `"drop"` se não quiser repassar link de terceiros.
 
 ## Outros ajustes
