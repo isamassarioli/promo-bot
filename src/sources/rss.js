@@ -44,6 +44,7 @@ export function watchFeed(feed, onPromo, log = () => {}, hooks = {}) {
         const promo = itemToPromo(item, feed.name);
         const cat = norm(promo.category);
         if (cat && (feed.skipCategories || []).some((c) => norm(c) === cat)) continue;
+        if (feed.onlyCategories?.length && !feed.onlyCategories.some((c) => norm(c) === cat)) continue;
         if (cat && (feed.priorityCategories || []).some((c) => norm(c) === cat)) promo.priority = true;
         await onPromo(promo);
       }

@@ -92,6 +92,9 @@ export function applyRules(url, rules = []) {
   // parâmetros que o próprio programa colocou (ex.: "ref" dos links meli.la do Mercado Livre).
   const sets = Object.entries(rule.setParams || {});
   if (sets.length && sets.every(([k, v]) => u.searchParams.get(k) === v)) return { url, matched: true, own: true };
+  // Páginas que não dá para converter (ex.: vitrine /social/ de outro afiliado do Mercado Livre,
+  // onde o produto fica escondido num código que só vale para ele): tratadas como "sem regra".
+  if ((rule.rejectPaths || []).some((re) => new RegExp(re).test(u.pathname))) return { url, matched: false };
   if (rule.clearParams) u.search = '';
   for (const p of rule.removeParams || []) u.searchParams.delete(p);
   if (rule.replaceHost) u.hostname = rule.replaceHost;

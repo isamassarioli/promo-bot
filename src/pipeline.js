@@ -26,6 +26,15 @@ export function dedupeKey(promo, links) {
   return 'h:' + crypto.createHash('sha1').update(basis).digest('hex').slice(0, 16);
 }
 
+/** Comissão estimada (R$) = preço x taxa da categoria. Serve para escolher a melhor oferta da fila. */
+export function estimatedCommission(promo, ranking = {}) {
+  const rates = ranking.commissionRates || {};
+  const cat = norm(promo.category || '');
+  const found = Object.entries(rates).find(([k]) => norm(k) === cat);
+  const rate = found ? found[1] : ranking.defaultRate ?? 0.05;
+  return Math.round((promo.price || 0) * rate * 100) / 100;
+}
+
 export function formatTemplate(promo, link, footer) {
   const lines = [`🔥 *${promo.title}*`, ''];
   if (promo.oldPrice && promo.price && promo.oldPrice > promo.price) {
@@ -65,8 +74,6 @@ export function createPipeline({ config, store, enqueue, log = () => {}, fetchIm
     if (hasKeyword(fullText, filters.blockedKeywords)) return reject('palavra bloqueada');
     if (filters.requiredKeywords?.length && !hasKeyword(fullText, filters.requiredKeywords))
       return reject('sem palavra obrigatória');
-    if (filters.minDiscountPercent > 0 && (promo.discount ?? 0) < filters.minDiscountPercent)
-      return reject('desconto baixo');
     if (filters.maxPrice > 0 && promo.price && promo.price > filters.maxPrice) return reject('preço alto');
 
     const body = promo.format === 'template' ? (raw.url || parsed.urls[0]) : raw.text;
@@ -80,38 +87,50 @@ export function createPipeline({ config, store, enqueue, log = () => {}, fetchIm
     if (store.hasSeen(key)) return reject('duplicada', 'duplicates');
     store.markSeen(key);
 
+    // Página do produto: preço atual e preço "De" reais, foto e contexto para a IA.
+    const product = links.find((l) => l.matched) || links[0];
+    const manual = raw.source === 'manual';
+    const page = await fetchProductInfo(product.expanded, { fetchImpl });
+    if (page.price) promo.price = page.price;
+    if (page.oldPrice && promo.price && page.oldPrice > promo.price) promo.oldPrice = page.oldPrice;
+    if (promo.oldPrice && promo.price && promo.oldPrice > promo.price)
+      promo.discount = Math.round((1 - promo.price / promo.oldPrice) * 100);
+    else promo.oldPrice = promo.discount = null;
+
+    // !promo é do admin: não passa pelos filtros de desconto/preço.
+    if (!manual) {
+      if (filters.minDiscountPercent > 0 && (promo.discount ?? 0) < filters.minDiscountPercent)
+        return reject(promo.discount ? `desconto baixo (${promo.discount}%)` : 'sem preço "De" real');
+      if (filters.minPrice > 0 && promo.price && promo.price < filters.minPrice) return reject('preço baixo');
+      if (filters.maxPrice > 0 && promo.price && promo.price > filters.maxPrice) return reject('preço alto');
+    }
+
     let message =
       promo.format === 'template'
         ? formatTemplate(promo, rewritten, footer)
         : [rewritten, footer].filter(Boolean).join('\n\n');
 
-    // Página do produto: foto quando a oferta não trouxe uma, e contexto para a IA.
     const wantImage = config.message?.sendImages !== false;
-    let image = wantImage ? raw.image || null : null;
-    if (writer || (wantImage && !image)) {
-      const product = links.find((l) => l.matched) || links[0];
-      const page = await fetchProductInfo(product.expanded, { fetchImpl });
-      if (wantImage && !image) image = page.image;
-      if (writer) {
-        let shop = null;
-        try {
-          shop = new URL(product.expanded).hostname.replace(/^www\./, '');
-        } catch {
-          /* sem loja */
-        }
-        const text = await writer({
-          title: raw.title || null,
-          pageTitle: page.title,
-          pageDescription: page.description,
-          price: promo.price,
-          oldPrice: promo.oldPrice,
-          discount: promo.discount,
-          coupon: promo.coupon,
-          store: shop,
-          sourceText: raw.text,
-        });
-        if (text) message = [text, `🛒 ${product.final}`, footer].filter(Boolean).join('\n\n');
+    const image = wantImage ? raw.image || page.image || null : null;
+    if (writer) {
+      let shop = null;
+      try {
+        shop = new URL(product.expanded).hostname.replace(/^www\./, '');
+      } catch {
+        /* sem loja */
       }
+      const text = await writer({
+        title: raw.title || null,
+        pageTitle: page.title,
+        pageDescription: page.description,
+        price: promo.price,
+        oldPrice: promo.oldPrice,
+        discount: promo.discount,
+        coupon: promo.coupon,
+        store: shop,
+        sourceText: raw.text,
+      });
+      if (text) message = [text, `🛒 ${product.final}`, footer].filter(Boolean).join('\n\n');
     }
 
     const item = {
@@ -119,7 +138,8 @@ export function createPipeline({ config, store, enqueue, log = () => {}, fetchIm
       source: raw.source,
       text: message,
       image,
-      priority: !!raw.priority,
+      priority: manual || !!raw.priority,
+      score: estimatedCommission(promo, config.ranking),
       createdAt: Date.now(),
     };
     enqueue(item);

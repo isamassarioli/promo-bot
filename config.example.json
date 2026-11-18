@@ -24,11 +24,16 @@
   "filters": {
     "blockedKeywords": ["aposta", "bet", "tigrinho"],
     "requiredKeywords": [],
-    "minDiscountPercent": 0,
+    "minDiscountPercent": 15,
     "maxPrice": 0
   },
 
   "ai": { "enabled": false, "model": "claude-haiku-5-5" },
+
+  "ranking": {
+    "defaultRate": 0.05,
+    "commissionRates": { "Moda e Acessórios": 0.10, "Cuidados Pessoais e Beleza": 0.10, "Móveis e Decoração": 0.08, "Notebooks e Informática": 0.04 }
+  },
 
   "message": {
     "footer": "📲 Mais ofertas: entre no nosso grupo!",
@@ -36,7 +41,8 @@
   },
 
   "sending": {
-    "minIntervalSeconds": 60,
+    "minIntervalSeconds": 2400,
+    "maxPerDay": 20,
     "delayBetweenGroupsSeconds": [4, 10],
     "quietHours": { "start": 23, "end": 7 },
     "maxPromoAgeMinutes": 120,

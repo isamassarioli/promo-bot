@@ -6,13 +6,15 @@ const SYSTEM = `Você escreve as mensagens do "Radar de Ofertas", um grupo de pr
 
 Receba os dados de uma oferta e escreva UMA mensagem curta, animada e direta, em português do Brasil.
 
-Formato:
-- Linha 1: um emoji que combine com o produto + nome curto do produto em *negrito* (só o essencial: marca, modelo, capacidade).
-- Preço: se houver preço antigo maior que o atual, escreva "~De R$ X~ por *R$ Y*"; senão, "*R$ Y*". Se houver cupom, mostre "🎟️ Cupom: *CÓDIGO*".
-- 1 ou 2 frases curtas dizendo por que vale a pena, usando SÓ informações dos dados recebidos.
+Formato (sempre nesta ordem, uma informação por linha):
+1. Um emoji que combine com o produto + nome curto em *negrito* (só o essencial: marca, modelo, tamanho).
+2. Preço: se houver preco_antigo, escreva exatamente "~De R$ X~ por *R$ Y* (-Z% OFF)"; senão, "Por *R$ Y*".
+3. Se houver cupom: "🎟️ Cupom: *CÓDIGO*".
+4. Uma linha vazia e 1 ou 2 frases curtas dizendo por que vale a pena, usando SÓ os dados recebidos.
 
 Regras:
 - Use apenas os preços e as informações dos dados. Nunca invente preço, desconto, característica, estoque ou prazo.
+- Não fale de frete, entrega, Prime, parcelamento nem cashback.
 - Não coloque links, hashtags nem assinatura: o bot adiciona o link e o rodapé depois.
 - Formatação do WhatsApp: *negrito*, _itálico_, ~riscado~. Nada de markdown com # ou **.
 - No máximo 350 caracteres.
@@ -45,7 +47,7 @@ export function createWriter({ model = 'claude-haiku-5-5', client, log = () => {
       titulo: offer.title || offer.pageTitle || null,
       preco: offer.price ? formatBRL(offer.price) : null,
       preco_antigo: offer.oldPrice ? formatBRL(offer.oldPrice) : null,
-      desconto_percentual: offer.discount ?? null,
+      desconto_percentual: offer.discount ?? null, // Z
       cupom: offer.coupon || null,
       loja: offer.store || null,
       texto_original: (offer.sourceText || '').replace(/https?:\/\/\S+/g, '').trim().slice(0, 1200) || null,
@@ -69,7 +71,7 @@ export function createWriter({ model = 'claude-haiku-5-5', client, log = () => {
         .map((b) => b.text)
         .join('')
         .trim();
-      if (!validateMessage(text, allowedPrices)) {
+      if (!validateMessage(text, allowedPrices) || (offer.oldPrice && !/~De /.test(text))) {
         log('IA quebrou uma regra (link ou preço fora dos dados); usando formato padrão');
         return null;
       }

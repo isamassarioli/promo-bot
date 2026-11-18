@@ -108,6 +108,19 @@ sem uma regra, o link original é mantido — use `"drop"` se não quiser repass
 - `rssFeeds`: `{ name, url, intervalSeconds }`. Na primeira leitura o histórico é ignorado.
   Opcional: `priorityCategories` (passam na frente da fila) e `skipCategories` (ignoradas), pelo nome da categoria do feed.
 
+## Quantidade e escolha das ofertas
+
+- `sending.minIntervalSeconds` (ex.: 2400 = 40 min) e `sending.maxPerDay` (ex.: 20) controlam quantas ofertas saem.
+  As do `!promo` saem na hora e não contam para o limite.
+- A fila não é por ordem de chegada: a cada envio sai a oferta com **maior comissão estimada**
+  (preço × taxa da categoria em `ranking.commissionRates`; categorias sem taxa usam `ranking.defaultRate`).
+  As taxas do exemplo são aproximadas: ajuste com as do painel de afiliados.
+- `filters.minDiscountPercent` exige desconto real. O preço "De" vem da própria página (Amazon) ou do texto da
+  oferta ("de R$ X por R$ Y"); oferta sem preço "De" real é descartada, nada é inventado.
+- No feed, `onlyCategories` deixa passar só as categorias listadas.
+- Regra com `rejectPaths` (ex.: `["^/social/"]` no Mercado Livre) descarta links que não dá para converter,
+  como a vitrine de outro afiliado.
+
 ## Relatório diário e alertas
 
 Todo dia às 8h o bot manda para os números em `"notify"` (ou, se vazio, para os `"admins"`) um resumo das

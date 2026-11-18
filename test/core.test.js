@@ -125,7 +125,7 @@ test('pipeline: template (RSS) e filtros', async () => {
   assert.match(sent[0].text, /Cupom: \*SSD50\*/);
   assert.match(sent[0].text, /awin\.example/);
   assert.equal((await handle({ source: 'g', text: 'Bônus na bet https://x.com/a' })).reason, 'palavra bloqueada');
-  assert.equal((await handle({ source: 'g', text: 'TV de R$ 100 por R$ 95 https://x.com/b' })).reason, 'desconto baixo');
+  assert.equal((await handle({ source: 'g', text: 'TV de R$ 100 por R$ 95 https://x.com/b' })).reason, 'desconto baixo (5%)');
   assert.equal((await handle({ source: 'g', text: 'bom dia grupo' })).reason, 'sem link');
   assert.equal((await handle({ source: 'g', text: 'Tablet https://x.com/tablet de R$ 100 por R$ 50' })).ok, true); // "tablet" não casa com "bet"
 });
@@ -190,7 +190,7 @@ test('pipeline: mensagem da IA + link de afiliado + rodapé', async () => {
 test('página do produto: lê og:image e og:title', async () => {
   const html = '<meta property="og:title" content="Fone &amp; Cia"><meta content="https://img.x/f.jpg" property="og:image">';
   const info = await fetchProductInfo('https://loja.x/p', { fetchImpl: async () => ({ text: async () => html }) });
-  assert.deepEqual(info, { title: 'Fone & Cia', description: null, image: 'https://img.x/f.jpg' });
+  assert.deepEqual(info, { price: null, oldPrice: null, title: 'Fone & Cia', description: null, image: 'https://img.x/f.jpg' });
 });
 
 test('monitor: relatório diário às 8h com o que aconteceu desde o último', async () => {
@@ -244,6 +244,60 @@ test('monitor: alertas de feed parado, IA sem crédito e grupo cheio, sem repeti
   clock = new Date(2026, 10, 17, 11, 10);
   await mon.check();
   assert.equal(sent.filter((t) => /não responde/.test(t)).length, 1);
+});
+
+test('Amazon: preço atual e preço "De" do bloco principal', async () => {
+  const html = '<div id="x">R$ 9,99</div><div id="corePriceDisplay_desktop_feature_div"><span class="a-price apex-pricetopay-value" data-a-size="xl"><span class="a-offscreen"> </span><span aria-hidden="true"><span class="a-price-symbol">R$</span><span class="a-price-whole">1.135<span class="a-price-decimal">,</span></span><span class="a-price-fraction">15</span></span></span> <span class="a-price a-text-price" data-a-strike="true" data-a-color="secondary"><span class="a-offscreen">R$2.269,90</span></span></div>';
+  const info = await fetchProductInfo('https://www.amazon.com.br/dp/X', { fetchImpl: async () => ({ text: async () => html }) });
+  assert.equal(info.price, 1135.15);
+  assert.equal(info.oldPrice, 2269.9);
+});
+
+test('pipeline: usa o "De" real da página, exige desconto e calcula a comissão estimada', async () => {
+  const page = '<div id="corePriceDisplay_desktop_feature_div"><span class="apex-pricetopay-value"><span class="a-price-whole">100<span class="a-price-decimal">,</span></span><span class="a-price-fraction">00</span></span><span data-a-strike="true"><span class="a-offscreen">R$200,00</span></span></div>';
+  const sent = [];
+  const store = new Store(null);
+  const config = {
+    affiliate: { rules, expandShortLinks: false }, message: { footer: 'RODAPÉ' },
+    filters: { minDiscountPercent: 15 }, ranking: { commissionRates: { 'Moda e Acessórios': 0.1 } },
+  };
+  const fetchImpl = async (url) => ({ url, text: async () => (url.includes('B0BOM') ? page : '') });
+  const handle = createPipeline({ config, store, fetchImpl, enqueue: (i) => sent.push(i) });
+  const ok = await handle({ source: 'rss', format: 'template', title: 'Bolsa', category: 'Moda e Acessórios', url: 'https://www.amazon.com.br/dp/B0BOM' });
+  assert.equal(ok.ok, true);
+  assert.match(sent[0].text, /~De R\$\s200,00~/);
+  assert.match(sent[0].text, /-50%/);
+  assert.equal(sent[0].score, 10);
+  const none = await handle({ source: 'rss', format: 'template', title: 'Caneca', text: 'R$ 30', url: 'https://www.amazon.com.br/dp/B0SEM' });
+  assert.equal(none.reason, 'sem preço "De" real');
+  const manual = await handle({ source: 'manual', format: 'repost', text: 'Meu achado R$ 30 https://www.amazon.com.br/dp/B0MEU' });
+  assert.equal(manual.ok, true);
+  assert.equal(sent.at(-1).priority, true);
+});
+
+test('fila: limite por dia, intervalo e a de maior comissão primeiro', async () => {
+  const store = new Store(null);
+  const sentKeys = [];
+  const q = new SendQueue({
+    store, getTargets: () => ['g'], send: async (_, i) => sentKeys.push(i.key),
+    sending: { minIntervalSeconds: 0, maxPerDay: 2, delayBetweenGroupsSeconds: [0, 0] },
+  });
+  const t = Date.now();
+  q.push({ key: 'barata', text: 'a', score: 1, createdAt: t });
+  q.push({ key: 'cara', text: 'b', score: 50, createdAt: t });
+  q.push({ key: 'media', text: 'c', score: 10, createdAt: t });
+  q.start();
+  await new Promise((r) => setTimeout(r, 3500));
+  q.stop();
+  assert.deepEqual(sentKeys, ['cara', 'media']); // parou no limite de 2
+  assert.equal(q.size, 1);
+});
+
+test('Mercado Livre: vitrine /social/ de outro afiliado não é convertida', () => {
+  const ml = [{ domain: 'mercadolivre.com.br', clearParams: true, rejectPaths: ['^/social/'], setParams: { matt_word: 'minha', matt_tool: '1' } }];
+  assert.equal(applyRules('https://www.mercadolivre.com.br/social/amigo?matt_word=amigo&ref=X', ml).matched, false);
+  assert.equal(applyRules('https://www.mercadolivre.com.br/social/minha?matt_word=minha&matt_tool=1&ref=X', ml).own, true);
+  assert.match(applyRules('https://produto.mercadolivre.com.br/MLB-123-fone?matt_word=amigo', ml).url, /matt_word=minha/);
 });
 
 test('horário de silêncio', () => {
